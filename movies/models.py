@@ -42,6 +42,8 @@ class Movie(models.Model):
     director = models.CharField(max_length=255, blank=True)
     language = models.CharField(max_length=100, blank=True)
     country = models.CharField(max_length=100, blank=True)
+    average_rating = models.FloatField(default=0.0)
+    watch_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
