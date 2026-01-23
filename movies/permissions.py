@@ -27,3 +27,20 @@ class IsRatingOwner(BasePermission):
         
         # Delete permissions are only allowed to the owner or admins
         return obj.user == request.user or request.user.is_staff
+
+
+class DenyUpdate(BasePermission):
+    """ Custom permission to deny updates """
+
+    def has_permission(self, request, view):
+        if request.method in ('PUT', 'PATCH'):
+            return False
+        return True
+
+
+class IsHistoryOwner(BasePermission):
+    """ Custom permission for WatchHistory """
+
+    def has_object_permission(self, request, view, obj):
+        # Only the owner of the watch history can access or delete it
+        return obj.user == request.user

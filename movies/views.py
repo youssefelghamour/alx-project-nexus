@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from .models import User, Movie, Genre, Rating, WatchHistory
 from .serializers import UserSerializer, MovieSerializer, GenreSerializer, RatingSerializer, WatchHistorySerializer
-from .permissions import IsRatingOwner
+from .permissions import IsRatingOwner, DenyUpdate, IsHistoryOwner
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -69,5 +69,36 @@ class RatingViewSet(viewsets.ModelViewSet):
 
 class WatchHistoryViewSet(viewsets.ModelViewSet):
     """ Viewset for WatchHistory model """
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
+    permission_classes = [IsAuthenticated, DenyUpdate, IsHistoryOwner]
     queryset = WatchHistory.objects.all()
     serializer_class = WatchHistorySerializer
+
+    def get_queryset(self):
+        """ Authenticated user can only see their own watch history """
+        # Only return watch history entries for the authenticated user for list and retrieve
+        return super().get_queryset().filter(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        """ Create a watch history is movie specific so it's handled in MovieViewSet watch action """
+        return Response(
+            {"detail": "Use /movies/<id>/watch/ instead to create a watch history."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    def delete(self, request, *args, **kwargs):
+        """ Allow users to delete their watch history entries
+            Since a watch history is created when a user rates a movie, (rated=watched)
+            we prevent deletion if there are existing ratings for that user
+        """
+        user = request.user
+        movie = self.get_object().movie
+        user_rating = Rating.objects.filter(user=user, movie=movie)
+
+        if not user_rating.exists():
+            return super().delete(request, *args, **kwargs)
+        else:
+            return Response(
+                {"detail": "Cannot delete watch history while ratings exist. Please delete your ratings first."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
