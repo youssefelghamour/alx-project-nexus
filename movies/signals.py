@@ -13,3 +13,12 @@ def recalculate_movie_average_rating(sender, instance, **kwargs):
     average_rating = ratings.aggregate(average=models.Avg('score'))['average'] or 0
     movie.average_rating = round(average_rating, 2)
     movie.save()
+
+
+@receiver(post_save, sender=WatchHistory)
+@receiver(post_delete, sender=WatchHistory)
+def recalculate_movie_watch_count(sender, instance, **kwargs):
+    """ Signal to update the watch count of a movie whenever a new watch history is created or deleted """
+    movie = instance.movie
+    movie.watch_count = WatchHistory.objects.filter(movie=movie).count()
+    movie.save()
