@@ -3,10 +3,17 @@ from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 
 from .models import User, Movie, Genre, Rating, WatchHistory
 from .serializers import UserSerializer, MovieSerializer, GenreSerializer, RatingSerializer, WatchHistorySerializer
 from .permissions import IsRatingOwner, DenyUpdate, IsHistoryOwner
+
+
+class CustomPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 50
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -33,6 +40,7 @@ class MovieViewSet(viewsets.ModelViewSet):
     """
     authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated, IsAdminUser]
+    pagination_class = CustomPagination
     queryset = Movie.objects.all()
     serializer_class = MovieSerializer
 
@@ -94,6 +102,24 @@ class MovieViewSet(viewsets.ModelViewSet):
             serializer.save(user=user, movie=movie)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='top-rated')
+    def top_rated(self, request):
+        """ Action to get top rated movies with an average rating >= 3 """
+        top_rated_movies = Movie.objects.filter(average_rating__gte=3).order_by('-average_rating')
+
+        # [EDGE CASE]: In case there are no movies with average rating >=3, return top 10 anyway
+        if not top_rated_movies.exists():
+            top_rated_movies = Movie.objects.all().order_by('-average_rating')
+        
+        # manually paginate
+        page = self.paginate_queryset(top_rated_movies)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(top_rated_movies, many=True)
+        return Response(serializer.data)
 
 
 class GenreViewSet(viewsets.ModelViewSet):
