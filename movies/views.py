@@ -120,6 +120,20 @@ class MovieViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(top_rated_movies, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='most-watched')
+    def most_watched(self, request):
+        """ Action to get the most watched movies """
+        most_watched_movies = Movie.objects.all().order_by('-watch_count')
+
+        # manually paginate
+        page = self.paginate_queryset(most_watched_movies)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(most_watched_movies, many=True)
+        return Response(serializer.data)
 
 
 class GenreViewSet(viewsets.ModelViewSet):
