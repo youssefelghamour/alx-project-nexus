@@ -51,11 +51,21 @@ class MovieSerializer(serializers.ModelSerializer):
     average_rating = serializers.FloatField(read_only=True)
     watch_count = serializers.IntegerField(read_only=True)
 
+    # only for popular view
+    popularity_score = serializers.FloatField(read_only=True)
+
     class Meta:
         model = Movie
         fields = ['movie_id', 'title', 'description', 'release_date', 'duration',
                   'cast', 'director', 'language', 'country', 'average_rating',
-                  'watch_count', 'genres', 'genre_names']
+                  'watch_count', 'genres', 'genre_names', 'popularity_score']
+    
+    def to_representation(self, instance):
+        """ Round popularity_score to 2 decimal places in the output """
+        data = super().to_representation(instance)
+        if data.get('popularity_score') is not None:
+            data['popularity_score'] = round(float(data['popularity_score']), 2)
+        return data
 
 
 class GenreSerializer(serializers.ModelSerializer):

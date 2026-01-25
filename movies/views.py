@@ -5,6 +5,8 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 
+from django.db.models import F, FloatField, ExpressionWrapper
+
 from .models import User, Movie, Genre, Rating, WatchHistory
 from .serializers import UserSerializer, MovieSerializer, GenreSerializer, RatingSerializer, WatchHistorySerializer
 from .permissions import IsRatingOwner, DenyUpdate, IsHistoryOwner
@@ -41,7 +43,7 @@ class MovieViewSet(viewsets.ModelViewSet):
     authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated, IsAdminUser]
     pagination_class = CustomPagination
-    queryset = Movie.objects.all()
+    queryset = Movie.objects.all().order_by('-created_at')
     serializer_class = MovieSerializer
 
     def get_permissions(self):
@@ -133,6 +135,28 @@ class MovieViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
 
         serializer = self.get_serializer(most_watched_movies, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='popular')
+    def popular(self, request):
+        """ Action to get the most popular movies based on a calculation of
+            popularity_score = (average_rating * 0.7) + (watch_count * 0.3)
+            having the rating weigh more than watch count
+        """
+        popular_movies = Movie.objects.annotate(
+            popularity_score = ExpressionWrapper(
+                F('average_rating') * 0.7 + F('watch_count') * 0.3,
+                output_field=FloatField()
+            )
+        ).order_by('-popularity_score')
+
+        # manually paginate
+        page = self.paginate_queryset(popular_movies)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(popular_movies, many=True)
         return Response(serializer.data)
 
 
