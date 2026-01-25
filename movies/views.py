@@ -5,7 +5,8 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 
-from django.db.models import F, FloatField, ExpressionWrapper
+from django.db import models
+from django.db.models import F, FloatField, ExpressionWrapper, Count
 
 from .models import User, Movie, Genre, Rating, WatchHistory
 from .serializers import UserSerializer, MovieSerializer, GenreSerializer, RatingSerializer, WatchHistorySerializer
@@ -158,6 +159,98 @@ class MovieViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(popular_movies, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='recommended', permission_classes=[IsAuthenticated])
+    def recommended(self, request):
+        """ Action to get recommended movies for the authenticated user
+            based on the top genres from their liked movies (rated >=3)
+        """
+        """
+            If the user liked 5 action movies but 1 drama movie, we should
+            recommend more action movies than drama movies
+
+            The recommendation algorithm works as follows:
+            1. Get the movies the user has rated >= 3
+            2. Filter the liked genres that include movies from the liked movies
+            3. For each liked genre, count how many liked movies by the user are in that genre
+            4. Order genres by the count of liked movies in descending order to get the most liked genres at the top
+            5. For each genre, calculate the proportion of liked movies in that genre to the total liked movies
+               e.g. if the user liked 5 action movies out of 10 total liked movies, action genre weight/proportion is 0.5
+            6. Based on the proportion, determine how many movies to recommend from that genre out of a total of 20 movies
+               e.g. for action genre with 50% proportion, we recommend 10 movies from that genre
+            7. From each genre, get the top movies ordered by popularity score
+            8. Combine all the selected movies from each genre into a final recommended list
+            9. Return the final recommended list ordered by popularity score
+        """
+        user = request.user
+
+        # Get the movies the user has rated >= 3
+        liked_movies = Rating.objects.filter(user=user, score__gte=3).values_list('movie', flat=True)
+        if not liked_movies.exists():
+            # fallback: return popular movies if user hasn't liked anything
+            popular_movies = Movie.objects.annotate(
+                popularity_score=F('average_rating') * 0.7 + F('watch_count') * 0.3
+            ).exclude(watched_by__user=user).order_by('-popularity_score')
+
+            page = self.paginate_queryset(popular_movies)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            
+            serializer = self.get_serializer(popular_movies, many=True)
+            return Response(serializer.data)
+
+        # Get top liked genres with count of liked movies in each genre ordered desc
+        ordered_liked_genres = (
+            Genre.objects
+            .filter(movies__in=liked_movies)
+            .annotate(liked_movies_count=Count('movies', filter=models.Q(movies__in=liked_movies)))
+            .order_by('-liked_movies_count')
+        )
+
+        # Get the number of movies liked by the user
+        total_liked_movies = liked_movies.count()
+
+        recommended_list = Movie.objects.none()
+        for genre in ordered_liked_genres:
+            # Get the weight of this genre: if the user liked 5 action movies
+            # out of 10 total liked movies, action genre weight/proportion is 0.5
+            # so we'll recommend 50% of the movies from this genre: total*0.5
+            proportion = genre.liked_movies_count / total_liked_movies
+
+            # Number of movies to pick from this genre out of 20 total, at least 1 movie
+            num_to_pick = max(1, int(proportion * 20))
+
+            # Get all movies in this genre
+            movies_in_genre = Movie.objects.filter(genres=genre)
+            # Exclude movies already watched/rated by the user
+            unwatched_movies = movies_in_genre.exclude(ratings__user=user)
+            # Annotate with popularity score field
+            movies_with_score = unwatched_movies.annotate(
+                popularity_score=ExpressionWrapper(
+                    F('average_rating') * 0.7 + F('watch_count') * 0.3,
+                    output_field=FloatField()
+                )
+            )
+
+            # Order by popularity score and pick top N
+            genre_movies = movies_with_score.order_by('-popularity_score').distinct()[:num_to_pick]
+
+            # union querysets
+            recommended_list = recommended_list | genre_movies
+        
+        # Final ordering so we don't get all action movies first then drama movies...
+        # Re-annotate and order by popularity score because after union the field score is lost
+        recommended_list = recommended_list.annotate(
+            popularity_score=ExpressionWrapper(
+                F('average_rating') * 0.7 + F('watch_count') * 0.3,
+                output_field=FloatField()
+            )
+        ).order_by('-popularity_score')
+
+        page = self.paginate_queryset(recommended_list)
+        serializer = self.get_serializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
 
 
 class GenreViewSet(viewsets.ModelViewSet):
