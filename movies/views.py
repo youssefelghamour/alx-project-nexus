@@ -11,6 +11,7 @@ from django.db.models import F, FloatField, ExpressionWrapper, Count
 from .models import User, Movie, Genre, Rating, WatchHistory
 from .serializers import UserSerializer, MovieSerializer, GenreSerializer, RatingSerializer, WatchHistorySerializer
 from .permissions import IsRatingOwner, DenyUpdate, IsHistoryOwner
+from .utils import calc_popularity_score, liked_genres, top_movies_for_genre
 
 
 class CustomPagination(PageNumberPagination):
@@ -177,8 +178,8 @@ class MovieViewSet(viewsets.ModelViewSet):
             5. For each genre, calculate the proportion of liked movies in that genre to the total liked movies
                e.g. if the user liked 5 action movies out of 10 total liked movies, action genre weight/proportion is 0.5
             6. Based on the proportion, determine how many movies to recommend from that genre out of a total of 20 movies
-               e.g. for action genre with 50% proportion, we recommend 10 movies from that genre
-            7. From each genre, get the top movies ordered by popularity score
+               e.g. for action genre with 50% proportion, we recommend 10 movies from that genre: 0.5*total
+            7. From each genre, get the top movies not yer watched & rated ordered by popularity score
             8. Combine all the selected movies from each genre into a final recommended list
             9. Return the final recommended list ordered by popularity score
         """
@@ -186,12 +187,12 @@ class MovieViewSet(viewsets.ModelViewSet):
 
         # Get the movies the user has rated >= 3
         liked_movies = Rating.objects.filter(user=user, score__gte=3).values_list('movie', flat=True)
-        if not liked_movies.exists():
-            # fallback: return popular movies if user hasn't liked anything
-            popular_movies = Movie.objects.annotate(
-                popularity_score=F('average_rating') * 0.7 + F('watch_count') * 0.3
-            ).exclude(watched_by__user=user).order_by('-popularity_score')
 
+        if not liked_movies.exists():
+            # Fallback: return popular movies if user hasn't liked anything
+            popular_movies = calc_popularity_score(Movie.objects).exclude(watched_by__user=user).order_by('-popularity_score')
+
+            # Paginate
             page = self.paginate_queryset(popular_movies)
             if page is not None:
                 serializer = self.get_serializer(page, many=True)
@@ -201,56 +202,36 @@ class MovieViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
 
         # Get top liked genres with count of liked movies in each genre ordered desc
-        ordered_liked_genres = (
-            Genre.objects
-            .filter(movies__in=liked_movies)
-            .annotate(liked_movies_count=Count('movies', filter=models.Q(movies__in=liked_movies)))
-            .order_by('-liked_movies_count')
-        )
+        ordered_liked_genres = liked_genres(liked_movies)
 
         # Get the number of movies liked by the user
         total_liked_movies = liked_movies.count()
 
         recommended_list = Movie.objects.none()
         for genre in ordered_liked_genres:
-            # Get the weight of this genre: if the user liked 5 action movies
-            # out of 10 total liked movies, action genre weight/proportion is 0.5
-            # so we'll recommend 50% of the movies from this genre: total*0.5
+            # Get the weight of this genre
             proportion = genre.liked_movies_count / total_liked_movies
 
             # Number of movies to pick from this genre out of 20 total, at least 1 movie
             num_to_pick = max(1, int(proportion * 20))
 
-            # Get all movies in this genre
-            movies_in_genre = Movie.objects.filter(genres=genre)
-            # Exclude movies already watched/rated by the user
-            unwatched_movies = movies_in_genre.exclude(ratings__user=user)
-            # Annotate with popularity score field
-            movies_with_score = unwatched_movies.annotate(
-                popularity_score=ExpressionWrapper(
-                    F('average_rating') * 0.7 + F('watch_count') * 0.3,
-                    output_field=FloatField()
-                )
-            )
-
-            # Order by popularity score and pick top N
-            genre_movies = movies_with_score.order_by('-popularity_score').distinct()[:num_to_pick]
+            # Get the number of most popular movies in this genre that haven't been watched by this user
+            genre_movies = top_movies_for_genre(user, genre, num_to_pick)
 
             # union querysets
             recommended_list = recommended_list | genre_movies
         
-        # Final ordering so we don't get all action movies first then drama movies...
+        # Final ordering to shuffle so we don't get all action movies first then all drama movies.. etc
         # Re-annotate and order by popularity score because after union the field score is lost
-        recommended_list = recommended_list.annotate(
-            popularity_score=ExpressionWrapper(
-                F('average_rating') * 0.7 + F('watch_count') * 0.3,
-                output_field=FloatField()
-            )
-        ).order_by('-popularity_score')
+        recommended_list = calc_popularity_score(recommended_list).order_by('-popularity_score')
 
         page = self.paginate_queryset(recommended_list)
-        serializer = self.get_serializer(page, many=True)
-        return self.get_paginated_response(serializer.data)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(recommended_list, many=True)
+        return Response(serializer.data)
 
 
 class GenreViewSet(viewsets.ModelViewSet):
