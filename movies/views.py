@@ -280,6 +280,9 @@ class WatchHistoryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """ Authenticated user can only see their own watch history """
+        # Admin can see all the watch history entries
+        if self.request.user.is_staff:
+            return super().get_queryset()
         # Only return watch history entries for the authenticated user for list and retrieve
         return super().get_queryset().filter(user=self.request.user)
 
