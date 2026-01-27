@@ -13,6 +13,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .models import User, Movie, Genre, Rating, WatchHistory
 from .serializers import UserSerializer, MovieSerializer, GenreSerializer, RatingSerializer, WatchHistorySerializer
 from .permissions import IsRatingOwner, DenyUpdate, IsHistoryOwner
+from .filters import MovieFilter
 from .utils import calc_popularity_score, liked_genres, top_movies_for_genre
 
 
@@ -48,20 +49,9 @@ class MovieViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminUser]
     pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = MovieFilter
     queryset = Movie.objects.all().order_by('-created_at')
     serializer_class = MovieSerializer
-
-    # Exact field filters
-    filterset_fields = {
-        'title': ['icontains'],
-        'director': ['icontains'],
-        'cast': ['icontains'],
-        'genres': ['exact'],  # filter by genre id
-        'language': ['iexact'],
-        'country': ['iexact'],
-        'release_date': ['year', 'gte', 'lte'],
-        'genres__name': ['iexact'],  # case-insensitive: action = Action
-    }
 
     # Text search
     search_fields = ['title', 'cast', 'director', 'description']
