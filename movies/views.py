@@ -25,7 +25,6 @@ class CustomPagination(PageNumberPagination):
 
 class UserViewSet(viewsets.ModelViewSet):
     """ Viewset for User model"""
-    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -53,7 +52,6 @@ class MovieViewSet(viewsets.ModelViewSet):
             - Authenticated: rate, watch, recommended
             - Admin: create, update, delete
     """
-    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated, IsAdminUser]
     pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
@@ -256,7 +254,6 @@ class MovieViewSet(viewsets.ModelViewSet):
 
 class GenreViewSet(viewsets.ModelViewSet):
     """ Viewset for Genre model """
-    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated, IsAdminUser]
     queryset = Genre.objects.all()
     serializer_class = GenreSerializer
@@ -272,7 +269,6 @@ class GenreViewSet(viewsets.ModelViewSet):
 
 class RatingViewSet(viewsets.ModelViewSet):
     """ Viewset for Rating model """
-    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated, IsRatingOwner]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     queryset = Rating.objects.all()
@@ -300,7 +296,6 @@ class RatingViewSet(viewsets.ModelViewSet):
 
 class WatchHistoryViewSet(viewsets.ModelViewSet):
     """ Viewset for WatchHistory model """
-    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated, DenyUpdate, IsHistoryOwner]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     queryset = WatchHistory.objects.all()
