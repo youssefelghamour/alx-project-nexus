@@ -73,13 +73,7 @@ jobs:
           DB_PORT: 5432
           DJANGO_SETTINGS_MODULE: recommendation_system.settings
         run: |
-          # Run pytest with HTML report
-          pytest --html=report.html --self-contained-html
-
-          # Run coverage
-          coverage run -m pytest
-          coverage xml
-          coverage report
+          pytest --cov=. --cov-report=xml --cov-report=term --html=report.html --self-contained-html
 
       # Upload coverage report
       - name: Upload coverage report
