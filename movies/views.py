@@ -10,6 +10,7 @@ from django.views.decorators.cache import cache_page
 from django.db import models
 from django.db.models import F, FloatField, ExpressionWrapper, Count
 from django.utils.decorators import method_decorator
+from django.core.cache import cache
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import User, Movie, Genre, Rating, WatchHistory
@@ -217,6 +218,12 @@ class MovieViewSet(viewsets.ModelViewSet):
             9. Return the final recommended list ordered by popularity score
         """
         user = request.user
+        cache_key = f"recommended_movies_user_{user.user_id}"
+
+        # Check for cache hit
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
 
         # Get the movies the user has rated >= 3
         liked_movies = Rating.objects.filter(user=user, score__gte=3).values_list('movie', flat=True)
@@ -229,9 +236,15 @@ class MovieViewSet(viewsets.ModelViewSet):
             page = self.paginate_queryset(popular_movies)
             if page is not None:
                 serializer = self.get_serializer(page, many=True)
+                data = serializer.data
+                # cache for 10 min
+                cache.set(cache_key, data, timeout=60 * 10)
                 return self.get_paginated_response(serializer.data)
             
             serializer = self.get_serializer(popular_movies, many=True)
+            data = serializer.data
+            # cache for 10 min
+            cache.set(cache_key, data, timeout=60 * 10)
             return Response(serializer.data)
 
         # Get top liked genres with count of liked movies in each genre ordered desc
@@ -254,16 +267,31 @@ class MovieViewSet(viewsets.ModelViewSet):
             # union querysets
             recommended_list = recommended_list | genre_movies
         
+        """
+            Since a movie can belong to many genres, that means it's counted for every genre as a liked movie
+            Which inflates genre.liked_movies_count and the proportion
+                We expect the sum of all liked_movies_count for all genres to = total_liked movies
+                which isn't the case since we count a movie multiple times (once for every genre)
+            Result is each genre picks the movie, so the proportion of each genre is slightly higher
+            And we end up returning a result exceeding 20 movies
+            That's why since we order by popularity score we can limit the result to 20 again
+        """
         # Final ordering to shuffle so we don't get all action movies first then all drama movies.. etc
         # Re-annotate and order by popularity score because after union the field score is lost
-        recommended_list = calc_popularity_score(recommended_list).order_by('-popularity_score')
+        recommended_list = calc_popularity_score(recommended_list).order_by('-popularity_score')[:20]
 
         page = self.paginate_queryset(recommended_list)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
+            data = serializer.data
+            # cache for 10 min
+            cache.set(cache_key, data, timeout=60 * 10)
             return self.get_paginated_response(serializer.data)
         
         serializer = self.get_serializer(recommended_list, many=True)
+        data = serializer.data
+        # cache for 10 min
+        cache.set(cache_key, data, timeout=60 * 10)
         return Response(serializer.data)
 
 

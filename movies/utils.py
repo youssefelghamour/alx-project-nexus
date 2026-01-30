@@ -1,6 +1,7 @@
 from django.db.models import F, FloatField, ExpressionWrapper, Count, Q
 from .models import Movie, Genre, Rating
 from django.db import models
+from django.core.cache import cache
 
 
 def calc_popularity_score(qs):
@@ -35,3 +36,9 @@ def top_movies_for_genre(user, genre, num_to_pick):
     genre_movies = movies_with_score.order_by('-popularity_score').distinct()[:num_to_pick]
 
     return genre_movies
+
+
+def invalidate_user_recommendation_cache(user_id):
+    """ Function to invalidate the cache for the recommended view for the user """
+    cache_key = f"recommended_movies_user_{user_id}"
+    cache.delete(cache_key)
