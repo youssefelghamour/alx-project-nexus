@@ -5,9 +5,11 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.filters import SearchFilter, OrderingFilter
+from django.views.decorators.cache import cache_page
 
 from django.db import models
 from django.db.models import F, FloatField, ExpressionWrapper, Count
+from django.utils.decorators import method_decorator
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import User, Movie, Genre, Rating, WatchHistory
@@ -74,6 +76,16 @@ class MovieViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         return super().get_permissions()
     
+    # Cache list of movies for 15 min
+    @method_decorator(cache_page(60*15))
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    # Cache single movie retrieve for 15 min
+    @method_decorator(cache_page(60*15))
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def rate(self, request, pk=None):
         """ Action for an authenticated user to rate a movie """
@@ -125,6 +137,7 @@ class MovieViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @method_decorator(cache_page(60 * 15))  # cache for 15min
     @action(detail=False, methods=['get'], url_path='top-rated')
     def top_rated(self, request):
         """ Action to get top rated movies with an average rating >= 3 """
@@ -143,6 +156,7 @@ class MovieViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(top_rated_movies, many=True)
         return Response(serializer.data)
     
+    @method_decorator(cache_page(60 * 15))
     @action(detail=False, methods=['get'], url_path='most-watched')
     def most_watched(self, request):
         """ Action to get the most watched movies """
@@ -157,6 +171,7 @@ class MovieViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(most_watched_movies, many=True)
         return Response(serializer.data)
     
+    @method_decorator(cache_page(60 * 15))
     @action(detail=False, methods=['get'], url_path='popular')
     def popular(self, request):
         """ Action to get the most popular movies based on a calculation of
@@ -265,6 +280,16 @@ class GenreViewSet(viewsets.ModelViewSet):
         if self.action in ["list", "retrieve"]:
             return [AllowAny()]
         return super().get_permissions()
+    
+    # Cache list of genres for 1 hour (they change very rarely)
+    @method_decorator(cache_page(60*60))
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    # Cache single genre retrieve for 1 hour
+    @method_decorator(cache_page(60*60))
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
 
 
 class RatingViewSet(viewsets.ModelViewSet):

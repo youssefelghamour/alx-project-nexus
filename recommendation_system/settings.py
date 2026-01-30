@@ -165,3 +165,14 @@ SIMPLE_JWT = {
     # Use user_id as the identifier in the JWT token instead of default 'id'
     'USER_ID_FIELD': 'user_id',
 }
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://redis:6379/0",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
