@@ -86,7 +86,14 @@ WSGI_APPLICATION = 'recommendation_system.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': env.db_url('DATABASE_URL')
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': env('DB_NAME'),
+        'USER': env('DB_USER'),
+        'PASSWORD': env('DB_PASSWORD'),
+        'HOST': env('DB_HOST'),
+        'PORT': env('DB_PORT'),
+    }
 }
 
 
@@ -162,5 +169,7 @@ SIMPLE_JWT = {
 
 
 CACHES = {
-    "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    }
 }
