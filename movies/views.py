@@ -87,6 +87,20 @@ class MovieViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
+    @action(detail=True, methods=['get'], url_path='ratings', permission_classes=[AllowAny])
+    def ratings(self, request, pk=None):
+        """ Get the ratings of a movie """
+        movie = self.get_object()
+        ratings = movie.ratings.all().order_by('-created_at')
+
+        page = self.paginate_queryset(ratings)
+        if page is not None:
+            serializer = RatingSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = RatingSerializer(ratings, many=True)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def rate(self, request, pk=None):
         """ Action for an authenticated user to rate a movie """
