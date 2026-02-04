@@ -62,13 +62,30 @@ class MovieType(DjangoObjectType):
         return round(self.average_rating * 0.7 + self.watch_count * 0.3, 2)
 
 
+# ────────────── TYPES ──────────────
+
+class MovieListType(graphene.ObjectType):
+    items = graphene.List(MovieType)
+    total_count = graphene.Int()
+    limit = graphene.Int()
+    offset = graphene.Int()
+
+class RatingListType(graphene.ObjectType):
+    items = graphene.List(RatingType)
+    total_count = graphene.Int()
+    limit = graphene.Int()
+    offset = graphene.Int()
+
+
 # ────────────── QUERY ──────────────
 
 class Query(graphene.ObjectType):
-    movies = graphene.List(
-        MovieType,
+    movies = graphene.Field(
+        MovieListType,
         genre=graphene.String(required=False), # Optional filter by genre name
-        watcher_id=graphene.String(required=False)
+        watcher_id=graphene.String(required=False),
+        limit=graphene.Int(),
+        offset=graphene.Int()
     )
 
     movie = graphene.Field(
@@ -78,23 +95,35 @@ class Query(graphene.ObjectType):
 
     me = graphene.Field(UserType)
     
-    ratings = graphene.List(
-        RatingType,
+    ratings = graphene.Field(
+        RatingListType,
         user_id=graphene.String(required=False),
-        movie_id=graphene.String(required=False)
+        movie_id=graphene.String(required=False),
+        limit=graphene.Int(),
+        offset=graphene.Int()
     )
 
-    def resolve_movies(self, info, genre=None, watcher_id=None):
+    def resolve_movies(self, info, genre=None, watcher_id=None, limit=20, offset=0):
         """ Return all movies
             - Filter by genre if genre name
             - Filter by watcher user id to only return movies the user watched
         """
         qs = Movie.objects.all()
+
         if genre:
             qs = qs.filter(genres__name__iexact=genre)
         if watcher_id:
             qs = qs.filter(watched_by__user_id=watcher_id)
-        return qs
+
+        total_count = qs.count()
+        qs = qs[offset:offset+limit]
+
+        return MovieListType(
+            items=qs,
+            total_count=total_count,
+            limit=limit,
+            offset=offset
+        )
 
     def resolve_movie(self, info, movie_id):
         """ Return a single movie by ID """
@@ -107,17 +136,27 @@ class Query(graphene.ObjectType):
             return None
         return user
     
-    def resolve_ratings(self, info, user_id=None, movie_id=None):
+    def resolve_ratings(self, info, user_id=None, movie_id=None, limit=20, offset=0):
         """ Return all ratings
             - filter by user_id to get all ratings of a user
             - filter by movie_id to get all ratings for a movie
         """
         qs = Rating.objects.all()
+        
         if user_id:
             qs = qs.filter(user__user_id=user_id)
         if movie_id:
             qs = qs.filter(movie__movie_id=movie_id)
-        return qs
+        
+        total_count = qs.count()
+        qs = qs[offset:offset+limit]
+
+        return RatingListType(
+            items=qs,
+            total_count=total_count,
+            limit=limit,
+            offset=offset
+        )
 
 
 schema = graphene.Schema(query=Query)
